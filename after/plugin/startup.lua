@@ -59,6 +59,6 @@ db.custom_center = {
 	},
 }
 db.custom_footer = { "", "🎉 If I'm using Neovim, then my Emacs config must be broken!" }
-db.session_directory = "/home/dt/.config/nvim/session"
+db.session_directory = "/home/toby/.config/nvim/session"
 
 
