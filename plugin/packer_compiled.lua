@@ -108,6 +108,11 @@ _G.packer_plugins = {
     path = "/home/toby/.local/share/nvim/site/pack/packer/opt/copilot.lua",
     url = "https://github.com/zbirenbaum/copilot.lua"
   },
+  ["dashboard-nvim"] = {
+    loaded = true,
+    path = "/home/toby/.local/share/nvim/site/pack/packer/start/dashboard-nvim",
+    url = "https://github.com/glepnir/dashboard-nvim"
+  },
   ["formatter.nvim"] = {
     loaded = true,
     path = "/home/toby/.local/share/nvim/site/pack/packer/start/formatter.nvim",
@@ -198,6 +203,11 @@ _G.packer_plugins = {
     loaded = true,
     path = "/home/toby/.local/share/nvim/site/pack/packer/start/telescope.nvim",
     url = "https://github.com/nvim-telescope/telescope.nvim"
+  },
+  vimtex = {
+    loaded = true,
+    path = "/home/toby/.local/share/nvim/site/pack/packer/start/vimtex",
+    url = "https://github.com/lervag/vimtex"
   }
 }
 
