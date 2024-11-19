@@ -36,6 +36,7 @@ return {
         "graphql",
         "emmet_ls",
         "prismals",
+        "yamlls",
         "pyright",
       },
     })
