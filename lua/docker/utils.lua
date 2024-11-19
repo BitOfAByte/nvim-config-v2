@@ -54,59 +54,71 @@ function M.show_docker_images(opts)
 end
 
 -- Function to execute a docker command and show the output
-local function execute_docker_command(command, container_id)
+local function execute_docker_command(prompt_bufnr, command, container_id)
+  actions.close(prompt_bufnr)
   vim.cmd('split')
   vim.cmd('terminal docker ' .. command .. ' ' .. container_id)
 end
 
 -- Function to show container logs
-local function show_container_logs(container_id)
+local function show_container_logs(prompt_bufnr, container_id)
+  actions.close(prompt_bufnr)
   vim.cmd('split')
   vim.cmd('terminal docker logs -f ' .. container_id)
+end
+
+-- Function to confirm dangerous actions
+local function confirm_action(prompt_bufnr, prompt, callback)
+  actions.close(prompt_bufnr)
+  vim.ui.select({ 'Yes', 'No' }, {
+    prompt = prompt .. " (Yes/No)",
+  }, function(choice)
+    if choice == 'Yes' then
+      callback()
+    end
+  end)
 end
 
 -- Main function to show docker containers
 function M.show_docker_containers(opts)
   opts = opts or {}
-  
-  -- Container action menu
-  local function container_action_menu(container_id, container_status)
-    local actions_menu = {
-      { name = "Start container", cmd = "start", enabled = container_status ~= "running" },
-      { name = "Stop container", cmd = "stop", enabled = container_status == "running" },
-      { name = "Restart container", cmd = "restart", enabled = true },
-      { name = "Delete container", cmd = "rm", enabled = container_status ~= "running" },
-      { name = "View logs", cmd = "logs", enabled = true },
-    }
 
-    -- Filter out disabled actions
-    local available_actions = vim.tbl_filter(function(action)
-      return action.enabled
-    end, actions_menu)
+  local function perform_container_action(prompt_bufnr, action, container_id, container_status)
+    if action == "delete" and container_status == "running" then
+      vim.notify("Cannot delete running container. Stop it first.", vim.log.levels.WARN)
+      return
+    end
+    
+    if action == "start" and container_status == "running" then
+      vim.notify("Container is already running.", vim.log.levels.INFO)
+      return
+    end
+    
+    if action == "stop" and container_status ~= "running" then
+      vim.notify("Container is not running.", vim.log.levels.INFO)
+      return
+    end
 
-    -- Create selection list
-    local action_names = vim.tbl_map(function(action)
-      return action.name
-    end, available_actions)
-
-    -- Show selection menu
-    vim.ui.select(action_names, {
-      prompt = "Select action for container " .. container_id:sub(1, 12),
-    }, function(choice)
-      if choice then
-        -- Find the selected action
-        for _, action in ipairs(available_actions) do
-          if action.name == choice then
-            if action.cmd == "logs" then
-              show_container_logs(container_id)
-            else
-              execute_docker_command(action.cmd, container_id)
-            end
-            break
-          end
-        end
+    -- Confirm dangerous actions
+    if action == "delete" then
+      confirm_action(prompt_bufnr, "Are you sure you want to delete this container?", function()
+        execute_docker_command(prompt_bufnr, "rm", container_id)
+      end)
+    else
+      local commands = {
+        start = "start",
+        stop = "stop",
+        restart = "restart",
+        delete = "rm",
+        logs = "logs -f"
+      }
+      
+      if action == "logs" then
+        show_container_logs(prompt_bufnr, container_id)
+      else
+        execute_docker_command(prompt_bufnr, commands[action], container_id)
       end
-    end)
+    end
   end
 
   pickers.new(opts, {
@@ -146,19 +158,80 @@ function M.show_docker_containers(opts)
           "Created: " .. entry.values.CreatedAt,
           "Status: " .. entry.values.Status,
           "Ports: " .. (entry.values.Ports or "None"),
+          "",
+          "Keybindings:",
+          "s - Start container",
+          "x - Stop container",
+          "r - Restart container",
+          "d - Delete container",
+          "l - View logs",
+          "<CR> - Action menu"
         }
         vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, details)
       end
     }),
     attach_mappings = function(prompt_bufnr)
+      -- Default action (show menu)
       actions.select_default:replace(function()
         local selection = actions_state.get_selected_entry()
-        actions.close(prompt_bufnr)
-        -- Get container status (running or not)
         local status = selection.values.Status:lower()
         local is_running = status:match("^up")
-        container_action_menu(selection.values.ID, is_running and "running" or "stopped")
+        
+        -- Show selection menu
+        vim.ui.select({
+          "Start container",
+          "Stop container",
+          "Restart container",
+          "Delete container",
+          "View logs"
+        }, {
+          prompt = "Select action for container " .. selection.values.ID:sub(1, 12)
+        }, function(choice)
+          if choice then
+            local action_map = {
+              ["Start container"] = "start",
+              ["Stop container"] = "stop",
+              ["Restart container"] = "restart",
+              ["Delete container"] = "delete",
+              ["View logs"] = "logs"
+            }
+            perform_container_action(prompt_bufnr, action_map[choice], selection.values.ID, is_running and "running" or "stopped")
+          end
+        end)
       end)
+
+      local map = function(key, action)
+        actions.select_default:replace(function()
+          local selection = actions_state.get_selected_entry()
+          local status = selection.values.Status:lower()
+          perform_container_action(prompt_bufnr, action, selection.values.ID, status:match("^up") and "running" or "stopped")
+        end)
+        return true
+      end
+
+      -- Add keybindings for container actions
+      actions.map_selections(prompt_bufnr, {
+        s = function(selection)
+          local status = selection.values.Status:lower()
+          perform_container_action(prompt_bufnr, "start", selection.values.ID, status:match("^up") and "running" or "stopped")
+        end,
+        x = function(selection)
+          local status = selection.values.Status:lower()
+          perform_container_action(prompt_bufnr, "stop", selection.values.ID, status:match("^up") and "running" or "stopped")
+        end,
+        r = function(selection)
+          local status = selection.values.Status:lower()
+          perform_container_action(prompt_bufnr, "restart", selection.values.ID, status:match("^up") and "running" or "stopped")
+        end,
+        d = function(selection)
+          local status = selection.values.Status:lower()
+          perform_container_action(prompt_bufnr, "delete", selection.values.ID, status:match("^up") and "running" or "stopped")
+        end,
+        l = function(selection)
+          perform_container_action(prompt_bufnr, "logs", selection.values.ID)
+        end,
+      })
+
       return true
     end
   }):find()
