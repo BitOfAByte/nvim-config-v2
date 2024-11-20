@@ -1,9 +1,7 @@
--- File: lua/docker_utils.lua
 local pickers = require("telescope.pickers")
 local finders = require("telescope.finders")
 local config = require("telescope.config").values
 local previewers = require("telescope.previewers")
-local utils = require("telescope.utils")
 local log = require("plenary.log")
 local actions = require("telescope.actions")
 local actions_state = require('telescope.actions.state')
@@ -11,6 +9,18 @@ local actions_state = require('telescope.actions.state')
 log.level = "debug"
 
 local M = {}
+
+-- Helper function to get formatted status
+local function get_formatted_status(status)
+  local status_lower = status:lower()
+  if status_lower:match("^up") then
+    return "🟢 Running"
+  elseif status_lower:match("^exited") then
+    return "⚫ Stopped"
+  else
+    return "⚫ Offline"
+  end
+end
 
 -- Main function to show docker images
 function M.show_docker_images(opts)
@@ -83,12 +93,12 @@ local function perform_container_action(action, container_id, container_status)
     vim.notify("Cannot delete running container. Stop it first.", vim.log.levels.WARN)
     return
   end
-  
+
   if action == "start" and container_status == "running" then
     vim.notify("Container is already running.", vim.log.levels.INFO)
     return
   end
-  
+
   if action == "stop" and container_status ~= "running" then
     vim.notify("Container is not running.", vim.log.levels.INFO)
     return
@@ -107,7 +117,7 @@ local function perform_container_action(action, container_id, container_status)
       delete = "rm",
       logs = "logs -f"
     }
-    
+
     if action == "logs" then
       show_container_logs(container_id)
     else
@@ -129,14 +139,17 @@ function M.show_docker_containers(opts)
       entry_maker = function(entry)
         local parsed = vim.json.decode(entry)
         if parsed then
-          -- Create a display string with status and name
+          -- Get formatted status with emoji indicator
+          local formatted_status = get_formatted_status(parsed.Status)
+
+          -- Create a display string with enhanced status formatting
           local display = string.format(
-            "%-20s %-15s %-30s",
+            "%-12s %-15s %-30s",
             parsed.ID:sub(1, 12),
-            parsed.Status:gsub("^Up ", "↑"):gsub("^Exited ", "↓"),
+            formatted_status,
             parsed.Names
           )
-          
+
           return {
             values = parsed,
             display = display,
@@ -149,13 +162,14 @@ function M.show_docker_containers(opts)
     previewer = previewers.new_buffer_previewer({
       title = "Container Details",
       define_preview = function(self, entry)
+        local formatted_status = get_formatted_status(entry.values.Status)
         local details = {
           "Container ID: " .. entry.values.ID,
           "Name: " .. entry.values.Names,
+          "Status: " .. formatted_status,
           "Image: " .. entry.values.Image,
           "Command: " .. entry.values.Command,
           "Created: " .. entry.values.CreatedAt,
-          "Status: " .. entry.values.Status,
           "Ports: " .. (entry.values.Ports or "None"),
           "",
           "Keybindings:",
@@ -242,7 +256,7 @@ function M.show_docker_containers(opts)
         local selection = get_selection_and_close()
         local status = selection.values.Status:lower()
         local is_running = status:match("^up")
-        
+
         -- Show selection menu
         vim.ui.select({
           "Start container",
